@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.json
+!package.json
+!package-lock.json
+puffer-walks-firebase-adminsdk-fbsvc-28bebbefe4.json
