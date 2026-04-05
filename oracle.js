@@ -29,7 +29,11 @@ const axios = require("axios");
 // ─── Firebase Admin Init ─────────────────────────────────────────────────────
 let serviceAccount;
 try {
-  const secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
+  let secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
+  
+  // 🧼 AUTO-CLEAN: Removes hidden characters and breaks that sneak in from GitHub secrets
+  secret = secret.replace(/[\n\r]/g, "").replace(/\s(?={)/, "");
+  
   console.log("🛠️ Received Secret length:", secret.length);
   console.log("🛠️ First character of secret:", secret.charAt(0));
   console.log("🛠️ Last character of secret:", secret.charAt(secret.length - 1));
@@ -38,7 +42,7 @@ try {
   
   serviceAccount = JSON.parse(secret);
 } catch (err) {
-  console.error("❌ Fatal JSON Parse Error! Your Firebase Secret is broken on GitHub.");
+  console.error("❌ Fatal JSON Parse Error! Your Firebase Secret has hidden characters.");
   console.error("❌ Error Message:", err.message);
   process.exit(1);
 }
