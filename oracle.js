@@ -27,7 +27,22 @@ const admin = require("firebase-admin");
 const axios = require("axios");
 
 // ─── Firebase Admin Init ─────────────────────────────────────────────────────
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+let serviceAccount;
+try {
+  const secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
+  console.log("🛠️ Received Secret length:", secret.length);
+  console.log("🛠️ First character of secret:", secret.charAt(0));
+  console.log("🛠️ Last character of secret:", secret.charAt(secret.length - 1));
+
+  if (!secret) throw new Error("FIREBASE_SERVICE_ACCOUNT secret is EMPTY on GitHub!");
+  
+  serviceAccount = JSON.parse(secret);
+} catch (err) {
+  console.error("❌ Fatal JSON Parse Error! Your Firebase Secret is broken on GitHub.");
+  console.error("❌ Error Message:", err.message);
+  process.exit(1);
+}
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
