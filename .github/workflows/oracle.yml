@@ -1,0 +1,38 @@
+name: Puffer Oracle 15min Sync
+
+on:
+  schedule:
+    # Runs every 15 minutes (at minute 0, 15, 30, and 45)
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allows manual triggering from GitHub UI
+
+jobs:
+  sync-oracle:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          cd oracle
+          npm install
+
+      - name: Run Oracle (One-Shot)
+        run: |
+          cd oracle
+          node oracle.js
+        env:
+          # Pull the secrets from your GitHub Repository Settings
+          ORACLE_PRIVATE_KEY: ${{ secrets.ORACLE_PRIVATE_KEY }}
+          MODULE_ADDRESS: ${{ secrets.MODULE_ADDRESS }}
+          MOVEMENT_NODE_URL: ${{ secrets.MOVEMENT_NODE_URL }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
+          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}

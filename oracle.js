@@ -259,7 +259,7 @@ async function finalizeCompletedDays({
   }
 }
 
-// ─── Run ──────────────────────────────────────────────────────────────────────
+// ─── Run (One-Shot for GitHub Actions) ────────────────────────────────────────
 runOracle().catch(err => {
   console.error("Fatal oracle error:", err);
   process.exit(1);
