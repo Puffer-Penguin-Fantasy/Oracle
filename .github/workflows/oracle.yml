@@ -24,12 +24,9 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Create .env from GitHub Secret
+        # This takes your "ORACLE_ENV" secret and writes it into a file for the script to read!
+        run: echo "${{ secrets.ORACLE_ENV }}" > .env
+
       - name: Run Oracle (One-Shot)
         run: node oracle.js
-        env:
-          ORACLE_PRIVATE_KEY: ${{ secrets.ORACLE_PRIVATE_KEY }}
-          MODULE_ADDRESS: ${{ secrets.MODULE_ADDRESS }}
-          MOVEMENT_NODE_URL: ${{ secrets.MOVEMENT_NODE_URL }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
-          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
