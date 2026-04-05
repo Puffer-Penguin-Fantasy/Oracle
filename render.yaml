@@ -1,0 +1,17 @@
+services:
+  - type: worker
+    name: puffer-oracle
+    env: node
+    buildCommand: npm install
+    startCommand: node oracle.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MODULE_ADDRESS
+        sync: false
+      - key: ORACLE_PRIVATE_KEY
+        sync: false
+      - key: FITBIT_CLIENT_ID
+        sync: false
+      - key: FITBIT_CLIENT_SECRET
+        sync: false
