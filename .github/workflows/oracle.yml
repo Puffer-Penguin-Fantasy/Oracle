@@ -1,4 +1,4 @@
-name: Puffer Oracle 15min Sync
+name: Puffer Oracle Sync
 
 on:
   push:
@@ -14,12 +14,12 @@ jobs:
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
       - name: Install Dependencies
         run: npm install
@@ -27,10 +27,7 @@ jobs:
       - name: Run Oracle (One-Shot)
         run: node oracle.js
         env:
-          # Using separate secrets avoids formatting issues with .env files
           ORACLE_PRIVATE_KEY: ${{ secrets.ORACLE_PRIVATE_KEY }}
           MODULE_ADDRESS: ${{ secrets.MODULE_ADDRESS }}
           MOVEMENT_NODE_URL: https://testnet.movementnetwork.xyz/v1
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
-          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}

@@ -1,6 +1,8 @@
 node_modules/
 .env
-*.json
+*.log
+.DS_Store
+.vercel
+# Keep package files for deployment
 !package.json
 !package-lock.json
-puffer-walks-firebase-adminsdk-fbsvc-28bebbefe4.json

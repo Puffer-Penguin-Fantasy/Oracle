@@ -53,14 +53,15 @@ const MODULE_ADDRESS = process.env.MODULE_ADDRESS;
 const oraclePrivateKey = new Ed25519PrivateKey(process.env.ORACLE_PRIVATE_KEY);
 const oracleAccount = Account.fromPrivateKey({ privateKey: oraclePrivateKey });
 
-// ─── Helper: On-Chain Submission ──────────────────────────────────────────────
-async function finalizeStepsOnChain(userAddress, gameId, dayIdx, steps) {
+// ─── Helper: Batch On-Chain Submission ──────────────────────────────────────────
+async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
+  if (userAddrs.length === 0) return true;
   try {
     const tx = await aptos.transaction.build.simple({
       sender: oracleAccount.accountAddress,
       data: {
-        function: `${MODULE_ADDRESS}::game::record_daily_steps`,
-        functionArguments: [userAddress, parseInt(gameId), dayIdx, steps],
+        function: `${MODULE_ADDRESS}::game::batch_record_daily_steps`,
+        functionArguments: [userAddrs, parseInt(gameId), dayIdx, stepsList],
       },
     });
 
@@ -70,10 +71,10 @@ async function finalizeStepsOnChain(userAddress, gameId, dayIdx, steps) {
     });
 
     await aptos.waitForTransaction({ transactionHash: committed.hash });
-    console.log(`  ✅ On-chain finalized: ${userAddress} game=${gameId} day=${dayIdx} steps=${steps}`);
+    console.log(`  ✅ Batch Success: Game ${gameId} Day ${dayIdx} (${userAddrs.length} users notarized)`);
     return true;
   } catch (err) {
-    console.error(`  ❌ On-chain failed for ${userAddress} day=${dayIdx}:`, err.message);
+    console.error(`  ❌ Batch Failure for Game ${gameId} Day ${dayIdx}:`, err.message);
     return false;
   }
 }
@@ -92,41 +93,48 @@ async function runOracle() {
     const gameStartTime = gameData.startTime || 0;
     const numDays = gameData.numDays || 7;
 
-    console.log(`\n🎮 Game: ${gameData.name || gameId}`);
+    console.log(`\n🎮 Processing Game: ${gameData.name || gameId}`);
 
-    const participantsSnap = await gameDoc.ref.collection("participants").get();
+    // We process each game day one by one
+    const currentDayIdx = Math.floor((nowSeconds - gameStartTime) / 86400);
     
-    for (const participantDoc of participantsSnap.docs) {
-      const p = participantDoc.data();
-      const walletAddress = p.walletAddress;
-      const days = p.days || {};
-      const daysOnChain = p.daysOnChain || {};
+    for (let d = 0; d < currentDayIdx && d < numDays; d++) {
+      const dayKey = `day${d + 1}`;
+      const chainKey = String(d);
+      
+      const batchAddrs = [];
+      const batchSteps = [];
+      const batchDocRefs = [];
 
-      // Calculate current day (0-indexed)
-      const currentDayIdx = Math.floor((nowSeconds - gameStartTime) / 86400);
+      const participantsSnap = await gameDoc.ref.collection("participants").get();
+      
+      for (const participantDoc of participantsSnap.docs) {
+        const p = participantDoc.data();
+        const days = p.days || {};
+        const daysOnChain = p.daysOnChain || {};
 
-      // We only finalize COMPLETED days (dayIdx < currentDayIdx)
-      console.log(`  👤 ${walletAddress} — Currently on Day ${currentDayIdx + 1}`);
-
-      for (let d = 0; d < currentDayIdx && d < numDays; d++) {
-        const chainKey = String(d);
         if (daysOnChain[chainKey]) continue; // Already notarized
 
-        const dayKey = `day${d + 1}`;
         const steps = days[dayKey];
-
         if (steps !== undefined && steps !== null) {
-          console.log(`  📝 Notarizing completed day: Day ${d + 1} (${steps} steps)`);
-          const ok = await finalizeStepsOnChain(walletAddress, gameId, d, steps);
-          if (ok) {
-            await participantDoc.ref.update({
-              [`daysOnChain.${chainKey}`]: true,
-            });
-          }
+          batchAddrs.push(p.walletAddress);
+          batchSteps.push(parseInt(steps));
+          batchDocRefs.push(participantDoc.ref);
         }
       }
-      
-      await new Promise(r => setTimeout(r, 200));
+
+      if (batchAddrs.length > 0) {
+        console.log(`  📝 Notarizing Day ${d + 1}: ${batchAddrs.length} users pending...`);
+        const ok = await finalizeBatchOnChain(batchAddrs, gameId, d, batchSteps);
+        if (ok) {
+          // Mark all as finished in Firestore
+          const batch = db.batch();
+          batchDocRefs.forEach(ref => {
+            batch.update(ref, { [`daysOnChain.${chainKey}`]: true });
+          });
+          await batch.commit();
+        }
+      }
     }
   }
   console.log("\n✅ Notarization cycle complete.");
