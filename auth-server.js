@@ -101,7 +101,7 @@ app.get("/auth/fitbit/url", (req, res) => {
   if (!wallet) return res.status(400).json({ error: "Missing wallet" });
   
   const scope = "activity profile";
-  const url = `https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=${FITBIT_CLIENT_ID}&redirect_uri=${encodeURIComponent(FITBIT_REDIRECT_URI)}&scope=${scope}&state=${wallet}`;
+  const url = `https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=${FITBIT_CLIENT_ID}&redirect_uri=${encodeURIComponent(FITBIT_REDIRECT_URI)}&scope=${scope}&state=${wallet}&prompt=login%20consent`;
   
   res.json({ url });
 });
@@ -181,6 +181,30 @@ app.post("/auth/fitbit/disconnect", async (req, res) => {
   const { wallet } = req.body;
   if (!wallet) return res.status(400).json({ error: "Missing wallet" });
   
+  try {
+    const doc = await db.collection("fitbit_tokens").doc(wallet).get();
+    if (doc.exists) {
+      const data = doc.data();
+      const token = data.refreshToken || data.accessToken;
+      if (token) {
+        const authHeader = Buffer.from(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`).toString("base64");
+        await axios.post("https://api.fitbit.com/oauth2/revoke", 
+          `token=${token}`,
+          {
+            headers: {
+              "Authorization": `Basic ${authHeader}`,
+              "Content-Type": "application/x-www-form-urlencoded"
+            }
+          }
+        ).catch(err => {
+          console.error(`Token revoke failed for ${wallet}, it may already be invalid. ${err.message}`);
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Error during Fitbit disconnect token revoke:", err);
+  }
+
   await db.collection("fitbit_tokens").doc(wallet).delete();
   res.json({ success: true });
 });
