@@ -119,14 +119,15 @@ app.get("/auth/fitbit/callback", async (req, res) => {
 
 // 3. Exchange code for tokens
 app.post("/auth/fitbit/exchange", async (req, res) => {
-  const { code, walletAddress } = req.body;
+  const { code, walletAddress, redirectUri } = req.body;
   if (!code || !walletAddress) return res.status(400).json({ error: "Missing params" });
   
   const authHeader = Buffer.from(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`).toString("base64");
+  const finalRedirectUri = redirectUri || FITBIT_REDIRECT_URI;
   
   try {
     const response = await axios.post("https://api.fitbit.com/oauth2/token",
-      `grant_type=authorization_code&code=${code}&redirect_uri=${encodeURIComponent(FITBIT_REDIRECT_URI)}`,
+      `grant_type=authorization_code&code=${code}&redirect_uri=${encodeURIComponent(finalRedirectUri)}`,
       {
         headers: {
           "Authorization": `Basic ${authHeader}`,
