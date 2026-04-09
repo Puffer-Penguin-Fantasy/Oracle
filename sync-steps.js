@@ -5,9 +5,8 @@
  * even if the player's browser is closed.
  * 
  * Schedule with cron:
- *   * /30 * * * * /usr/bin/node /path/to/oracle/sync-steps.js
+ *   every 5 minutes: * /5 * * * * /usr/bin/node /path/to/oracle/sync-steps.js
  */
-
 require("dotenv").config();
 const axios = require("axios");
 const admin = require("firebase-admin");
@@ -116,9 +115,9 @@ async function runSync() {
         
         // 4. Update Firestore with new step count
         const gameStartTime = new Date(game.startTime * 1000);
-        gameStartTime.setHours(0,0,0,0);
+        gameStartTime.setUTCHours(0,0,0,0);
         const todayMidnight = new Date();
-        todayMidnight.setHours(0,0,0,0);
+        todayMidnight.setUTCHours(0,0,0,0);
         
         const diffTime = todayMidnight.getTime() - gameStartTime.getTime();
         const currentDayIdx = Math.floor(diffTime / (1000 * 60 * 60 * 24));
