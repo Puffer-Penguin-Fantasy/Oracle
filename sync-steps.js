@@ -35,18 +35,25 @@ const FITBIT_CLIENT_SECRET = process.env.FITBIT_CLIENT_SECRET;
 // ─── Helper: Fitbit Token Refresh ─────────────────────────────────────────────
 async function getValidToken(walletAddress, data) {
   const now = Date.now();
-  const expiresAt = data.expiresAt || 0;
+  // Support both snake_case (stored by Vercel) and camelCase (legacy/oracle)
+  const expiresAt = data.expires_at || data.expiresAt || 0;
+  const accessToken = data.access_token || data.accessToken;
+  const refreshToken = data.refresh_token || data.refreshToken;
   
   // If token is still valid for > 15 mins, return it
-  if (now + 900000 < expiresAt && data.accessToken) {
-    return data.accessToken;
+  if (now + 900000 < expiresAt && accessToken) {
+    return accessToken;
   }
   
+  if (!refreshToken) {
+    throw new Error("No refresh token available");
+  }
+
   console.log(`  🔄 Refreshing token for ${walletAddress}...`);
   const authHeader = Buffer.from(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`).toString("base64");
   
   const res = await axios.post("https://api.fitbit.com/oauth2/token", 
-    `grant_type=refresh_token&refresh_token=${data.refreshToken}`,
+    `grant_type=refresh_token&refresh_token=${refreshToken}`,
     {
       headers: {
         "Authorization": `Basic ${authHeader}`,
@@ -56,14 +63,14 @@ async function getValidToken(walletAddress, data) {
   );
   
   const newTokens = {
-    accessToken: res.data.access_token,
-    refreshToken: res.data.refresh_token,
-    expiresAt: Date.now() + (res.data.expires_in * 1000),
+    access_token: res.data.access_token,
+    refresh_token: res.data.refresh_token,
+    expires_at: Date.now() + (res.data.expires_in * 1000),
     lastRefreshed: new Date().toISOString()
   };
   
   await db.collection("fitbit_tokens").doc(walletAddress).update(newTokens);
-  return newTokens.accessToken;
+  return newTokens.access_token;
 }
 
 // ─── Main Sync Loop ───────────────────────────────────────────────────────────
