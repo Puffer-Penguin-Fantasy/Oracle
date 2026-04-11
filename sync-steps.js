@@ -15,7 +15,13 @@ const admin = require("firebase-admin");
 let serviceAccount;
 try {
   let secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
-  secret = secret.replace(/[\n\r]/g, "").replace(/\s(?={)/, "");
+  if (!secret) throw new Error("FIREBASE_SERVICE_ACCOUNT is empty!");
+
+  // If the secret is double-quoted, strip outer quotes
+  if (secret.startsWith('"') && secret.endsWith('"')) {
+    secret = secret.substring(1, secret.length - 1);
+  }
+
   serviceAccount = JSON.parse(secret);
 } catch (err) {
   console.error("❌ Firebase Secret Error in Sync Oracle:", err.message);

@@ -27,8 +27,13 @@ const admin = require("firebase-admin");
 let serviceAccount;
 try {
   let secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
-  secret = secret.replace(/[\n\r]/g, "").replace(/\s(?={)/, "");
   if (!secret) throw new Error("FIREBASE_SERVICE_ACCOUNT is empty!");
+  
+  // If the secret is double-quoted (common in some env setups), strip outer quotes
+  if (secret.startsWith('"') && secret.endsWith('"')) {
+    secret = secret.substring(1, secret.length - 1);
+  }
+
   serviceAccount = JSON.parse(secret);
 } catch (err) {
   console.error("❌ Firebase Secret Error:", err.message);
@@ -36,7 +41,7 @@ try {
 }
 
 if (!admin.apps.length) {
-  // Fix for common newline issues in secret managers
+  // Fix for Rendere/Vercel/Heroku where newlines in private keys are often escaped as \n
   if (serviceAccount && serviceAccount.private_key) {
     serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
   }
