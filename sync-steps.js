@@ -5,7 +5,7 @@
  * even if the player's browser is closed.
  * 
  * Schedule with cron:
- *   every 5 minutes: * /5 * * * * /usr/bin/node /path/to/oracle/sync-steps.js
+ *   every 2 minutes: * /2 * * * * /usr/bin/node /path/to/oracle/sync-steps.js
  */
 require("dotenv").config();
 const axios = require("axios");
