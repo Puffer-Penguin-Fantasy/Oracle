@@ -33,7 +33,18 @@ try {
 if (!admin.apps.length) {
   // Fix for common newline issues in secret managers
   if (serviceAccount && serviceAccount.private_key) {
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    let pk = serviceAccount.private_key.replace(/\\n/g, '\n');
+    
+    // Ultimate PEM Cleaner: Remove all middle whitespace and ensure proper header/footer separation
+    const header = "-----BEGIN PRIVATE KEY-----";
+    const footer = "-----END PRIVATE KEY-----";
+    if (pk.includes(header) && pk.includes(footer)) {
+      const parts = pk.split(header)[1].split(footer);
+      const body = parts[0].replace(/[\s\n\r]/g, ""); // Remove all formatting junk from base64
+      pk = `${header}\n${body}\n${footer}\n`;
+    }
+    
+    serviceAccount.private_key = pk;
   }
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
