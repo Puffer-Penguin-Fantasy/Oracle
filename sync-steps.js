@@ -101,7 +101,14 @@ async function runSync() {
   console.log(`\n☁️ Puffer Background Sync Running: ${new Date().toISOString()}`);
   
   const now = new Date();
-  const todayStr = now.toISOString().split("T")[0];
+  const today = new Date(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const datesToSync = [
+    { str: yesterday.toISOString().split("T")[0], label: "yesterday" },
+    { str: today.toISOString().split("T")[0], label: "today" }
+  ];
   
   // 1. Get all active games
   const gamesSnap = await db.collection("games").get();
@@ -110,9 +117,9 @@ async function runSync() {
     const game = gameDoc.data();
     const gameId = gameDoc.id;
     
-    // Skip ended games
+    // Skip ended games (more than 1 day ago)
     const endTime = game.endTime ? new Date(game.endTime * 1000) : null;
-    if (endTime && now > endTime) continue;
+    if (endTime && now.getTime() > (endTime.getTime() + 86400000)) continue;
 
     console.log(`🎮 Checking Game: ${game.name || gameId}`);
     
@@ -127,7 +134,6 @@ async function runSync() {
       // 2. Get user's Fitbit token
       const tokenSnap = await db.collection("fitbit_tokens").doc(wallet).get();
       if (!tokenSnap.exists || !tokenSnap.data().connected) {
-        console.log(`  ⚠️ User ${wallet} is not connected to Fitbit.`);
         continue;
       }
       
@@ -135,30 +141,33 @@ async function runSync() {
         const tokenData = tokenSnap.data();
         const accessToken = await getValidToken(wallet, tokenData);
         
-        // 3. Fetch steps for today
-        const fitbitRes = await axios.get(
-          `https://api.fitbit.com/1/user/-/activities/date/${todayStr}.json`,
-          { headers: { "Authorization": `Bearer ${accessToken}` } }
-        );
-        
-        const steps = fitbitRes.data.summary.steps;
-        
-        // 4. Update Firestore with new step count
-        const gameStartTime = new Date(game.startTime * 1000);
-        gameStartTime.setUTCHours(0,0,0,0);
-        const todayMidnight = new Date();
-        todayMidnight.setUTCHours(0,0,0,0);
-        
-        const diffTime = todayMidnight.getTime() - gameStartTime.getTime();
-        const currentDayIdx = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (currentDayIdx >= 0 && currentDayIdx < (game.numDays || 7)) {
-          const dayKey = `day${currentDayIdx + 1}`;
-          await participantDoc.ref.update({
-            [`days.${dayKey}`]: steps,
-            lastUpdated: new Date().toISOString()
-          });
-          console.log(`  ✅ Synced ${steps} steps for ${wallet} (${dayKey})`);
+        for (const dateObj of datesToSync) {
+          // 3. Fetch steps for specific date
+          const fitbitRes = await axios.get(
+            `https://api.fitbit.com/1/user/-/activities/date/${dateObj.str}.json`,
+            { headers: { "Authorization": `Bearer ${accessToken}` } }
+          );
+          
+          const steps = fitbitRes.data.summary.steps;
+          
+          // 4. Update Firestore with new step count
+          const gameStartTime = new Date(game.startTime * 1000);
+          gameStartTime.setUTCHours(0,0,0,0);
+          
+          const targetDate = new Date(dateObj.str);
+          targetDate.setUTCHours(0,0,0,0);
+          
+          const diffTime = targetDate.getTime() - gameStartTime.getTime();
+          const currentDayIdx = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (currentDayIdx >= 0 && currentDayIdx < (game.numDays || 7)) {
+            const dayKey = `day${currentDayIdx + 1}`;
+            await participantDoc.ref.update({
+              [`days.${dayKey}`]: steps,
+              lastUpdated: new Date().toISOString()
+            });
+            console.log(`  ✅ Synced ${steps} steps for ${wallet} (${dateObj.label}: ${dayKey})`);
+          }
         }
       } catch (err) {
         console.error(`  ❌ Failed to sync ${wallet}:`, err.response?.data || err.message);

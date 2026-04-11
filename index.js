@@ -5,21 +5,25 @@ const port = process.env.PORT || 3000;
 
 // Security: You can add a secret key later if you want
 app.get('/sync', (req, res) => {
-  console.log(`\n🔔 Sync Triggered at ${new Date().toISOString()}`);
+  console.log(`\n🔔 Sync Chain Triggered at ${new Date().toISOString()}`);
   
-  // Run sync-steps
+  // 1. Run sync-steps FIRST
   exec('node sync-steps.js', (err, stdout, stderr) => {
-    if (err) console.error(`❌ Sync Steps Error: ${err.message}`);
+    if (err) {
+      console.error(`❌ Sync Steps Error: ${err.message}`);
+      return res.status(500).send(`Sync Failed: ${err.message}`);
+    }
     if (stdout) console.log(`📋 Sync Output: ${stdout}`);
-  });
 
-  // Run notarizer (oracle.js)
-  exec('node oracle.js', (err, stdout, stderr) => {
-    if (err) console.error(`❌ Notarizer Error: ${err.message}`);
-    if (stdout) console.log(`📋 Notarizer Output: ${stdout}`);
-  });
+    // 2. Run notarizer (oracle.js) ONLY AFTER sync-steps is done
+    console.log("🔗 Sync complete. Starting Notarization...");
+    exec('node oracle.js', (err, stdout, stderr) => {
+      if (err) console.error(`❌ Notarizer Error: ${err.message}`);
+      if (stdout) console.log(`📋 Notarizer Output: ${stdout}`);
+    });
 
-  res.send('Sync and Notarization processes started in background.');
+    res.send('Sync complete. Notarization process started in background.');
+  });
 });
 
 // Health check for Render
