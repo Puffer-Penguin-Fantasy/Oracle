@@ -36,6 +36,10 @@ try {
 }
 
 if (!admin.apps.length) {
+  // Fix for common newline issues in secret managers
+  if (serviceAccount && serviceAccount.private_key) {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  }
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
