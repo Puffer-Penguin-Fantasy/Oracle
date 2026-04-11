@@ -1,21 +1,21 @@
 services:
-  - type: cron
-    name: puffer-oracle-cron
+  - type: web
+    name: puffer-oracle-web
     env: node
-    plan: free # Change to starter if you need more runtime
-    schedule: "*/5 * * * *" # Runs every 5 minutes
+    plan: free # THIS IS NOW COMPLETELY FREE
+    region: oregon # or your preferred region
     buildCommand: npm install
-    startCommand: "node sync-steps.js && node oracle.js"
+    startCommand: npm start
     envVars:
       - key: FIREBASE_SERVICE_ACCOUNT
-        sync: false # Set this in Render Dashboard
+        sync: false
       - key: FITBIT_CLIENT_ID
-        sync: false # Set this in Render Dashboard
+        sync: false
       - key: FITBIT_CLIENT_SECRET
-        sync: false # Set this in Render Dashboard
+        sync: false
       - key: ORACLE_PRIVATE_KEY
-        sync: false # Set this in Render Dashboard
+        sync: false
       - key: MODULE_ADDRESS
-        sync: false # Set this in Render Dashboard
+        sync: false
       - key: MOVEMENT_NODE_URL
         value: "https://testnet.movementnetwork.xyz/v1"

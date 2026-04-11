@@ -4,7 +4,7 @@
   "description": "Daily step oracle for Puffer Walks — fetches Fitbit data and submits to Movement blockchain",
   "main": "oracle.js",
   "scripts": {
-    "start": "node oracle.js",
+    "start": "node index.js",
     "dev": "node --watch oracle.js",
     "auth": "node auth-server.js",
     "auth:dev": "node --watch auth-server.js"
