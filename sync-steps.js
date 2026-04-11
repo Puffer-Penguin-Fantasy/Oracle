@@ -22,7 +22,9 @@ try {
     secret = secret.substring(1, secret.length - 1);
   }
 
-  serviceAccount = JSON.parse(secret);
+  // Remove actual newlines/returns from the JSON string to allow parsing if it was pasted as a formatted block
+  const cleanedSecret = secret.replace(/[\n\r]/g, "");
+  serviceAccount = JSON.parse(cleanedSecret);
 } catch (err) {
   console.error("❌ Firebase Secret Error in Sync Oracle:", err.message);
   process.exit(1);

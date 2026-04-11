@@ -29,19 +29,21 @@ try {
   let secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
   if (!secret) throw new Error("FIREBASE_SERVICE_ACCOUNT is empty!");
   
-  // If the secret is double-quoted (common in some env setups), strip outer quotes
+  // If the secret is double-quoted, strip outer quotes
   if (secret.startsWith('"') && secret.endsWith('"')) {
     secret = secret.substring(1, secret.length - 1);
   }
 
-  serviceAccount = JSON.parse(secret);
+  // Remove actual newlines/returns from the JSON string to allow parsing if it was pasted as a formatted block
+  const cleanedSecret = secret.replace(/[\n\r]/g, "");
+  serviceAccount = JSON.parse(cleanedSecret);
 } catch (err) {
   console.error("❌ Firebase Secret Error:", err.message);
   process.exit(1);
 }
 
 if (!admin.apps.length) {
-  // Fix for Rendere/Vercel/Heroku where newlines in private keys are often escaped as \n
+  // Fix for Render/Vercel/Heroku where newlines in private keys are often escaped as \n
   if (serviceAccount && serviceAccount.private_key) {
     serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
   }
