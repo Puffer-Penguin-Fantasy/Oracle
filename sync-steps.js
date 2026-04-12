@@ -1,11 +1,7 @@
 /**
- * Puffer Walks Background Synchronizer
+ * Puffer Walks Background Synchronizer — Parallelized
  * -------------------------------------------------
- * This script ensures that steps are fetched from Fitbit 
- * even if the player's browser is closed.
- * 
- * Schedule with cron:
- *   every 2 minutes: * /2 * * * * /usr/bin/node /path/to/oracle/sync-steps.js
+ * Fetches steps concurrently with limited concurrency to avoid 429s.
  */
 require("dotenv").config();
 const axios = require("axios");
@@ -16,13 +12,9 @@ let serviceAccount;
 try {
   let secret = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
   if (!secret) throw new Error("FIREBASE_SERVICE_ACCOUNT is empty!");
-
-  // If the secret is double-quoted, strip outer quotes
   if (secret.startsWith('"') && secret.endsWith('"')) {
     secret = secret.substring(1, secret.length - 1);
   }
-
-  // Remove actual newlines/returns from the JSON string to allow parsing if it was pasted as a formatted block
   const cleanedSecret = secret.replace(/[\n\r]/g, "");
   serviceAccount = JSON.parse(cleanedSecret);
 } catch (err) {
@@ -31,19 +23,15 @@ try {
 }
 
 if (!admin.apps.length) {
-  // Fix for common newline issues in secret managers
   if (serviceAccount && serviceAccount.private_key) {
     let pk = serviceAccount.private_key.replace(/\\n/g, '\n');
-    
-    // Ultimate PEM Cleaner: Remove all middle whitespace and ensure proper header/footer separation
     const header = "-----BEGIN PRIVATE KEY-----";
     const footer = "-----END PRIVATE KEY-----";
     if (pk.includes(header) && pk.includes(footer)) {
       const parts = pk.split(header)[1].split(footer);
-      const body = parts[0].replace(/[\s\n\r]/g, ""); // Remove all formatting junk from base64
+      const body = parts[0].replace(/[\s\n\r]/g, ""); 
       pk = `${header}\n${body}\n${footer}\n`;
     }
-    
     serviceAccount.private_key = pk;
   }
   admin.initializeApp({
@@ -58,12 +46,10 @@ const FITBIT_CLIENT_SECRET = process.env.FITBIT_CLIENT_SECRET;
 // ─── Helper: Fitbit Token Refresh ─────────────────────────────────────────────
 async function getValidToken(walletAddress, data) {
   const now = Date.now();
-  // Support both snake_case (stored by Vercel) and camelCase (legacy/oracle)
   const expiresAt = data.expires_at || data.expiresAt || 0;
   const accessToken = data.access_token || data.accessToken;
   const refreshToken = data.refresh_token || data.refreshToken;
   
-  // If token is still valid for > 15 mins, return it
   if (now + 900000 < expiresAt && accessToken) {
     return accessToken;
   }
@@ -72,7 +58,6 @@ async function getValidToken(walletAddress, data) {
     throw new Error("No refresh token available");
   }
 
-  console.log(`  🔄 Refreshing token for ${walletAddress}...`);
   const authHeader = Buffer.from(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`).toString("base64");
   
   const res = await axios.post("https://api.fitbit.com/oauth2/token", 
@@ -96,84 +81,99 @@ async function getValidToken(walletAddress, data) {
   return newTokens.access_token;
 }
 
+// ─── Concurrency Limiter ──────────────────────────────────────────────────────
+async function runWithConcurrency(tasks, limit = 10) {
+  const results = [];
+  let i = 0;
+  async function runNext() {
+    if (i >= tasks.length) return;
+    const idx = i++;
+    results[idx] = await tasks[idx]().catch(e => ({ error: e.message }));
+    await runNext();
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, runNext));
+  return results;
+}
+
+// ─── Individual Participant Sync ──────────────────────────────────────────────
+async function syncParticipant({ wallet, tokenData, participantRef, dateObj, game }) {
+  try {
+    const accessToken = await getValidToken(wallet, tokenData);
+
+    const fitbitRes = await axios.get(
+      `https://api.fitbit.com/1/user/-/activities/date/${dateObj.str}.json`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 8000 }
+    );
+    const steps = fitbitRes.data?.summary?.steps;
+    if (steps === undefined) return;
+
+    const gameStartTime = new Date(game.startTime * 1000);
+    gameStartTime.setUTCHours(0, 0, 0, 0);
+    const targetDate = new Date(dateObj.str);
+    targetDate.setUTCHours(0, 0, 0, 0);
+
+    const dayIdx = Math.floor((targetDate - gameStartTime) / 86400000);
+    if (dayIdx >= 0 && dayIdx < (game.numDays || 7)) {
+      const dayKey = `day${dayIdx + 1}`;
+      await participantRef.update({
+        [`days.${dayKey}`]: steps,
+        lastUpdated: new Date().toISOString(),
+      });
+      console.log(`  ✅ ${wallet.slice(0, 8)}… ${dateObj.label}: ${steps} steps → ${dayKey}`);
+    }
+  } catch (err) {
+    const status = err.response?.status;
+    console.error(`  ❌ ${wallet.slice(0, 8)}… [${status || 'ERR'}]: ${err.response?.data?.errors?.[0]?.message || err.message}`);
+  }
+}
+
 // ─── Main Sync Loop ───────────────────────────────────────────────────────────
 async function runSync() {
-  console.log(`\n☁️ Puffer Background Sync Running: ${new Date().toISOString()}`);
+  console.log(`\n☁️ Puffer Parallel Sync Running: ${new Date().toISOString()}`);
   
   const now = new Date();
-  const today = new Date(now);
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
 
   const datesToSync = [
     { str: yesterday.toISOString().split("T")[0], label: "yesterday" },
-    { str: today.toISOString().split("T")[0], label: "today" }
+    { str: now.toISOString().split("T")[0], label: "today" }
   ];
   
-  // 1. Get all active games
   const gamesSnap = await db.collection("games").get();
-  
+  const tasks = [];
+
   for (const gameDoc of gamesSnap.docs) {
     const game = gameDoc.data();
-    const gameId = gameDoc.id;
-    
-    // Skip ended games (more than 1 day ago)
     const endTime = game.endTime ? new Date(game.endTime * 1000) : null;
     if (endTime && now.getTime() > (endTime.getTime() + 86400000)) continue;
 
-    console.log(`🎮 Checking Game: ${game.name || gameId}`);
-    
+    console.log(`🎮 Checking Game: ${game.name || gameDoc.id}`);
     const participantsSnap = await gameDoc.ref.collection("participants").get();
     
     for (const participantDoc of participantsSnap.docs) {
       const p = participantDoc.data();
       const wallet = p.walletAddress;
-      
       if (!wallet) continue;
-      
-      // 2. Get user's Fitbit token
+
       const tokenSnap = await db.collection("fitbit_tokens").doc(wallet).get();
-      if (!tokenSnap.exists || !tokenSnap.data().connected) {
-        continue;
-      }
-      
-      try {
-        const tokenData = tokenSnap.data();
-        const accessToken = await getValidToken(wallet, tokenData);
-        
-        for (const dateObj of datesToSync) {
-          // 3. Fetch steps for specific date
-          const fitbitRes = await axios.get(
-            `https://api.fitbit.com/1/user/-/activities/date/${dateObj.str}.json`,
-            { headers: { "Authorization": `Bearer ${accessToken}` } }
-          );
-          
-          const steps = fitbitRes.data.summary.steps;
-          
-          // 4. Update Firestore with new step count
-          const gameStartTime = new Date(game.startTime * 1000);
-          gameStartTime.setUTCHours(0,0,0,0);
-          
-          const targetDate = new Date(dateObj.str);
-          targetDate.setUTCHours(0,0,0,0);
-          
-          const diffTime = targetDate.getTime() - gameStartTime.getTime();
-          const currentDayIdx = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-          
-          if (currentDayIdx >= 0 && currentDayIdx < (game.numDays || 7)) {
-            const dayKey = `day${currentDayIdx + 1}`;
-            await participantDoc.ref.update({
-              [`days.${dayKey}`]: steps,
-              lastUpdated: new Date().toISOString()
-            });
-            console.log(`  ✅ Synced ${steps} steps for ${wallet} (${dateObj.label}: ${dayKey})`);
-          }
-        }
-      } catch (err) {
-        console.error(`  ❌ Failed to sync ${wallet}:`, err.response?.data || err.message);
+      if (!tokenSnap.exists || !tokenSnap.data().connected) continue;
+
+      const tokenData = tokenSnap.data();
+      for (const dateObj of datesToSync) {
+        tasks.push(() => syncParticipant({
+          wallet,
+          tokenData,
+          participantRef: participantDoc.ref,
+          dateObj,
+          game
+        }));
       }
     }
   }
+
+  console.log(`📋 Total fetch tasks: ${tasks.length} (running 10 at a time)`);
+  await runWithConcurrency(tasks, 10);
 }
 
 runSync().then(() => {

@@ -3,26 +3,25 @@ const { exec } = require('child_process');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Security: You can add a secret key later if you want
+// Optional: protect with a secret so random people can't trigger it
+const SYNC_SECRET = process.env.SYNC_SECRET || null;
+
 app.get('/sync', (req, res) => {
-  console.log(`\n🔔 Sync Chain Triggered at ${new Date().toISOString()}`);
-  
-  // 1. Run sync-steps FIRST
-  exec('node sync-steps.js', (err, stdout, stderr) => {
-    if (err) {
-      console.error(`❌ Sync Steps Error: ${err.message}`);
-      return res.status(500).send(`Sync Failed: ${err.message}`);
-    }
-    if (stdout) console.log(`📋 Sync Output: ${stdout}`);
+  if (SYNC_SECRET && req.query.secret !== SYNC_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
 
-    // 2. Run notarizer (oracle.js) ONLY AFTER sync-steps is done
-    console.log("🔗 Sync complete. Starting Notarization...");
-    exec('node oracle.js', (err, stdout, stderr) => {
-      if (err) console.error(`❌ Notarizer Error: ${err.message}`);
-      if (stdout) console.log(`📋 Notarizer Output: ${stdout}`);
-    });
+  console.log(`\n🔔 Sync triggered: ${new Date().toISOString()}`);
 
-    res.send('Sync complete. Notarization process started in background.');
+  // Respond immediately so cron-job.org doesn't time out waiting
+  res.send('Sync started.');
+
+  // Run sync-steps ONLY. Oracle runs on its own GitHub Actions schedule.
+  exec('node sync-steps.js', { timeout: 110000 }, (err, stdout, stderr) => {
+    if (err) console.error(`❌ Sync error: ${err.message}`);
+    if (stdout) console.log(stdout);
+    if (stderr) console.error(stderr);
+    console.log('✅ Sync cycle done.');
   });
 });
 

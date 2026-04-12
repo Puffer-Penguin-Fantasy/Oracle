@@ -1,40 +1,35 @@
-name: Puffer Oracle Sync
+name: Puffer Oracle Notarizer
 
 on:
-  push:
-    branches: [ main ]
   schedule:
-    # Runs every 10 minutes
-    - cron: '*/10 * * * *'
-  workflow_dispatch: 
+    # Runs at :45 past every hour — giving sync (which runs every 2 min) 
+    # plenty of time to flush all Fitbit data before we sign on-chain.
+    - cron: '45 * * * *'
+  workflow_dispatch: # manual trigger for testing
 
 jobs:
-  sync-oracle:
+  notarize:
     runs-on: ubuntu-latest
-    
+    defaults:
+      run:
+        working-directory: ./
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Run Background Sync (Fitbit)
-        run: node sync-steps.js
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
-          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
-
-      - name: Run Oracle Notarizer (Blockchain)
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './package-lock.json'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run oracle notarizer
         run: node oracle.js
+        timeout-minutes: 10
         env:
           ORACLE_PRIVATE_KEY: ${{ secrets.ORACLE_PRIVATE_KEY }}
           MODULE_ADDRESS: ${{ secrets.MODULE_ADDRESS }}
-          MOVEMENT_NODE_URL: https://testnet.movementnetwork.xyz/v1
+          MOVEMENT_NODE_URL: ${{ secrets.MOVEMENT_NODE_URL }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
