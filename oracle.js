@@ -118,7 +118,10 @@ async function runOracle() {
     console.log(`\n🎮 Processing Game: ${gameData.name || gameId}`);
 
     // We process each game day one by one
-    const currentDayIdx = Math.floor((nowSeconds - gameStartTime) / 86400);
+    // We add a 12-hour grace period (43200 seconds) before considering a day "finished".
+    // This allows players to wake up the next morning and sync their watches before steps are locked on-chain.
+    const GRACE_PERIOD = 43200; 
+    const currentDayIdx = Math.floor((nowSeconds - gameStartTime - GRACE_PERIOD) / 86400);
     
     for (let d = 0; d < currentDayIdx && d < numDays; d++) {
       const dayKey = `day${d + 1}`;
