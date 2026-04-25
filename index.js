@@ -15,21 +15,11 @@ app.get('/sync', (req, res) => {
   console.log(`\n🔔 Sync triggered: ${new Date().toISOString()}`);
   res.send('Sync started in parallel.');
 
-  // Run both in parallel
-  const runSync = (script) => new Promise((resolve) => {
-    exec(`node ${script}`, { timeout: 220000 }, (err, stdout, stderr) => {
-      if (err) console.error(`❌ ${script} error: ${err.message}`);
-      if (stdout) console.log(`[${script}] ${stdout}`);
-      if (stderr) console.error(`[${script}] ${stderr}`);
-      resolve();
-    });
-  });
-
-  Promise.all([
-    runSync('sync-steps.js'),
-    runSync('sync-googlefit-steps.js')
-  ]).then(() => {
-    console.log('✅ All Sync cycles done.');
+  exec(`node sync-steps.js`, { timeout: 220000 }, (err, stdout, stderr) => {
+    if (err) console.error(`❌ sync-steps.js error: ${err.message}`);
+    if (stdout) console.log(`[sync-steps.js] ${stdout}`);
+    if (stderr) console.error(`[sync-steps.js] ${stderr}`);
+    console.log('✅ Sync cycle done.');
   });
 });
 
