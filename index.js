@@ -1,9 +1,10 @@
 const express = require('express');
 const { exec } = require('child_process');
+const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Optional: protect with a secret so random people can't trigger it
+// Optional: protect with a secret
 const SYNC_SECRET = process.env.SYNC_SECRET || null;
 
 app.get('/sync', (req, res) => {
@@ -12,24 +13,43 @@ app.get('/sync', (req, res) => {
   }
 
   console.log(`\n🔔 Sync triggered: ${new Date().toISOString()}`);
+  res.send('Sync started in parallel.');
 
-  // Respond immediately so cron-job.org doesn't time out waiting
-  res.send('Sync started.');
+  // Run both in parallel
+  const runSync = (script) => new Promise((resolve) => {
+    exec(`node ${script}`, { timeout: 220000 }, (err, stdout, stderr) => {
+      if (err) console.error(`❌ ${script} error: ${err.message}`);
+      if (stdout) console.log(`[${script}] ${stdout}`);
+      if (stderr) console.error(`[${script}] ${stderr}`);
+      resolve();
+    });
+  });
 
-  // Run sync-steps ONLY. Oracle runs on its own GitHub Actions schedule.
-  exec('node sync-steps.js', { timeout: 110000 }, (err, stdout, stderr) => {
-    if (err) console.error(`❌ Sync error: ${err.message}`);
-    if (stdout) console.log(stdout);
-    if (stderr) console.error(stderr);
-    console.log('✅ Sync cycle done.');
+  Promise.all([
+    runSync('sync-steps.js'),
+    runSync('sync-googlefit-steps.js')
+  ]).then(() => {
+    console.log('✅ All Sync cycles done.');
   });
 });
 
-// Health check for Render
+app.get('/keep-alive', (req, res) => {
+  res.send('Stayin Alive! 🕺');
+});
+
 app.get('/', (req, res) => {
   res.send('Puffer Oracle is Live 🏃‍♂️');
 });
 
+// Self-ping every 10 minutes to stay awake on Render
+const APP_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+setInterval(() => {
+  axios.get(`${APP_URL}/keep-alive`)
+    .then(() => console.log('💓 Keep-alive ping successful'))
+    .catch(err => console.error('💔 Keep-alive ping failed:', err.message));
+}, 10 * 60 * 1000);
+
 app.listen(port, () => {
   console.log(`🚀 Oracle Web Server listening at http://localhost:${port}`);
+  console.log(`📡 Keep-alive active for: ${APP_URL}`);
 });
