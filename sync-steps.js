@@ -101,11 +101,13 @@ async function syncParticipant({ wallet, tokenData, participantRef, dateObj, gam
     const accessToken = await getValidToken(wallet, tokenData);
 
     const fitbitRes = await axios.get(
-      `https://api.fitbit.com/1/user/-/activities/date/${dateObj.str}.json`,
+      `https://api.fitbit.com/1/user/-/activities/tracker/steps/date/${dateObj.str}/1d.json`,
       { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 8000 }
     );
-    const steps = fitbitRes.data?.summary?.steps;
-    if (steps === undefined) return;
+    const trackerSteps = fitbitRes.data?.['activities-tracker-steps'];
+    if (!trackerSteps || trackerSteps.length === 0) return;
+    const steps = parseInt(trackerSteps[0].value, 10);
+    if (isNaN(steps)) return;
 
     const gameStartTime = new Date(game.startTime * 1000);
     gameStartTime.setUTCHours(0, 0, 0, 0);
@@ -172,8 +174,8 @@ async function runSync() {
     }
   }
 
-  console.log(`📋 Total fetch tasks: ${tasks.length} (running 10 at a time)`);
-  await runWithConcurrency(tasks, 10);
+  console.log(`📋 Total fetch tasks: ${tasks.length} (running 30 at a time)`);
+  await runWithConcurrency(tasks, 30);
 }
 
 runSync().then(() => {
