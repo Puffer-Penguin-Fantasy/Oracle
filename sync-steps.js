@@ -159,8 +159,12 @@ async function runSync() {
 
   for (const gameDoc of gamesSnap.docs) {
     const game = gameDoc.data();
-    const endTime = game.endTime ? new Date(game.endTime * 1000) : null;
-    if (endTime && now.getTime() > (endTime.getTime() + 86400000)) continue;
+    const startTime = game.startTime || 0;
+    const numDays = game.numDays || 7;
+    const endTimeSecs = game.endTime || (startTime + numDays * 86400);
+
+    // Skip games that ended more than 48 hours ago
+    if (now.getTime() / 1000 > (endTimeSecs + 172800)) continue;
 
     console.log(`🎮 Checking Game: ${game.name || gameDoc.id}`);
     const participantsSnap = await gameDoc.ref.collection("participants").get();

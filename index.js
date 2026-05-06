@@ -15,11 +15,19 @@ app.get('/sync', (req, res) => {
   console.log(`\n🔔 Sync triggered: ${new Date().toISOString()}`);
   res.send('Sync started in parallel.');
 
-  exec(`node sync-steps.js`, { timeout: 220000 }, (err, stdout, stderr) => {
+  exec(`node sync-steps.js`, { timeout: 600000 }, (err, stdout, stderr) => {
     if (err) console.error(`❌ sync-steps.js error: ${err.message}`);
     if (stdout) console.log(`[sync-steps.js] ${stdout}`);
     if (stderr) console.error(`[sync-steps.js] ${stderr}`);
-    console.log('✅ Sync cycle done.');
+    
+    console.log('✅ Fitbit Sync complete. Starting Blockchain Notarization...');
+    
+    exec(`node oracle.js`, { timeout: 600000 }, (oErr, oStdout, oStderr) => {
+      if (oErr) console.error(`❌ oracle.js error: ${oErr.message}`);
+      if (oStdout) console.log(`[oracle.js] ${oStdout}`);
+      if (oStderr) console.error(`[oracle.js] ${oStderr}`);
+      console.log('🏁 Full Oracle cycle (Sync + Notarization) done.');
+    });
   });
 });
 

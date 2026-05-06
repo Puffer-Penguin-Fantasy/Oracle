@@ -95,8 +95,11 @@ async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
       transaction: tx,
     });
 
-    await aptos.waitForTransaction({ transactionHash: committed.hash });
-    console.log(`  ✅ Batch Success: Game ${gameId} Day ${dayIdx} (${userAddrs.length} users notarized)`);
+    const result = await aptos.waitForTransaction({ transactionHash: committed.hash });
+    if (!result.success) {
+      throw new Error(`Transaction failed: ${result.vm_status}`);
+    }
+    console.log(`  ✅ Batch Success! Hash: ${committed.hash}`);
     return true;
   } catch (err) {
     console.error(`  ❌ Batch Failure for Game ${gameId} Day ${dayIdx}:`, err.message);
@@ -117,13 +120,20 @@ async function runOracle() {
     const gameData = gameDoc.data();
     const gameStartTime = gameData.startTime || 0;
     const numDays = gameData.numDays || 7;
+    const gameEndTime = gameData.endTime || (gameStartTime + numDays * 86400);
+
+    // Skip games that ended more than 48 hours ago (172800 seconds)
+    // This gives a window for the final syncs and notarization to complete.
+    if (nowSeconds > (gameEndTime + 172800)) {
+      continue;
+    }
 
     console.log(`\n🎮 Processing Game: ${gameData.name || gameId}`);
 
     // We process each game day one by one.
-    // Reducing Grace Period to 2 hours (7200s) instead of 12 hours.
-    // This allows players to wake up the next morning and sync their watches before steps are locked on-chain.
-    const GRACE_PERIOD = 7200; 
+    // Increasing Grace Period to 7 hours (25200s).
+    // This gives players until 7 AM the next day to sync their steps before notarization.
+    const GRACE_PERIOD = 25200; 
     const currentDayIdx = Math.floor((nowSeconds - gameStartTime - GRACE_PERIOD) / 86400);
     
     console.log(`  - Game Clock: Day ${Math.floor((nowSeconds - gameStartTime) / 86400) + 1}`);
@@ -145,9 +155,13 @@ async function runOracle() {
         const days = p.days || {};
         const daysOnChain = p.daysOnChain || {};
 
-        if (daysOnChain[chainKey]) continue; // Already notarized
-
         const steps = days[dayKey];
+        const alreadyNotarized = !!daysOnChain[chainKey];
+
+        console.log(`      👤 ${p.walletAddress?.slice(0,10)}... | ${dayKey}: ${steps ?? 'MISSING'} | onChain: ${alreadyNotarized}`);
+
+        if (alreadyNotarized) continue;
+
         if (steps !== undefined && steps !== null) {
           batchAddrs.push(p.walletAddress);
           batchSteps.push(parseInt(steps));
@@ -156,15 +170,26 @@ async function runOracle() {
       }
 
       if (batchAddrs.length > 0) {
-        console.log(`  📝 Notarizing Day ${d + 1}: ${batchAddrs.length} users pending...`);
-        const ok = await finalizeBatchOnChain(batchAddrs, gameId, d, batchSteps);
-        if (ok) {
-          // Mark all as finished in Firestore
-          const batch = db.batch();
-          batchDocRefs.forEach(ref => {
-            batch.update(ref, { [`daysOnChain.${chainKey}`]: true });
-          });
-          await batch.commit();
+        console.log(`  🚀 SENDING BATCH: Notarizing Day ${d + 1} for ${batchAddrs.length} users...`);
+        
+        // Chunk participants into groups of 50 to avoid blockchain transaction size limits
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < batchAddrs.length; i += CHUNK_SIZE) {
+          const chunkAddrs = batchAddrs.slice(i, i + CHUNK_SIZE);
+          const chunkSteps = batchSteps.slice(i, i + CHUNK_SIZE);
+          const chunkRefs = batchDocRefs.slice(i, i + CHUNK_SIZE);
+
+          console.log(`    - Processing chunk: users ${i + 1} to ${Math.min(i + CHUNK_SIZE, batchAddrs.length)}`);
+          
+          const ok = await finalizeBatchOnChain(chunkAddrs, gameId, d, chunkSteps);
+          if (ok) {
+            const firestoreBatch = db.batch();
+            chunkRefs.forEach(ref => {
+              firestoreBatch.update(ref, { [`daysOnChain.${chainKey}`]: true });
+            });
+            await firestoreBatch.commit();
+            console.log(`    ✨ Chunk notarized and Firestore updated.`);
+          }
         }
       }
     }
