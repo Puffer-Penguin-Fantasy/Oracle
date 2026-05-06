@@ -63,6 +63,7 @@ if (!admin.apps.length) {
   });
 }
 const db = admin.firestore();
+console.log(`📡 Connected to Firestore Project: ${serviceAccount.project_id}`);
 
 // ─── Movement Client Init ─────────────────────────────────────────────────────
 const aptosConfig = new AptosConfig({
@@ -85,7 +86,7 @@ async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
       sender: oracleAccount.accountAddress,
       data: {
         function: `${MODULE_ADDRESS}::game::batch_record_daily_steps`,
-        functionArguments: [userAddrs, parseInt(gameId), dayIdx, stepsList],
+        functionArguments: [userAddrs, gameId.toString(), dayIdx.toString(), stepsList.map(s => s.toString())],
       },
     });
 
@@ -137,6 +138,7 @@ async function runOracle() {
       const batchDocRefs = [];
 
       const participantsSnap = await gameDoc.ref.collection("participants").get();
+      console.log(`    (Found ${participantsSnap.size} participants in Firestore collection)`);
       
       for (const participantDoc of participantsSnap.docs) {
         const p = participantDoc.data();
