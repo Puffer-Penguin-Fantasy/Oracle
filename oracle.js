@@ -75,6 +75,8 @@ const MODULE_ADDRESS = process.env.MODULE_ADDRESS;
 const oraclePrivateKey = new Ed25519PrivateKey(process.env.ORACLE_PRIVATE_KEY);
 const oracleAccount = Account.fromPrivateKey({ privateKey: oraclePrivateKey });
 
+console.log(`🔑 Oracle Address: ${oracleAccount.accountAddress.toString()}`);
+
 // ─── Helper: Batch On-Chain Submission ──────────────────────────────────────────
 async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
   if (userAddrs.length === 0) return true;
@@ -117,12 +119,15 @@ async function runOracle() {
 
     console.log(`\n🎮 Processing Game: ${gameData.name || gameId}`);
 
-    // We process each game day one by one
-    // We add a 12-hour grace period (43200 seconds) before considering a day "finished".
+    // We process each game day one by one.
+    // Reducing Grace Period to 2 hours (7200s) instead of 12 hours.
     // This allows players to wake up the next morning and sync their watches before steps are locked on-chain.
-    const GRACE_PERIOD = 43200; 
+    const GRACE_PERIOD = 7200; 
     const currentDayIdx = Math.floor((nowSeconds - gameStartTime - GRACE_PERIOD) / 86400);
     
+    console.log(`  - Game Clock: Day ${Math.floor((nowSeconds - gameStartTime) / 86400) + 1}`);
+    console.log(`  - Notarizable up to: Day ${currentDayIdx}`);
+
     for (let d = 0; d < currentDayIdx && d < numDays; d++) {
       const dayKey = `day${d + 1}`;
       const chainKey = String(d);
