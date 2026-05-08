@@ -2,9 +2,9 @@ name: Puffer Oracle Notarizer
 
 on:
   schedule:
-    # Runs at :45 past every hour — giving sync (which runs every 2 min) 
+    # Runs at :45 past every 3rd hour — giving sync (which runs every 2 min) 
     # plenty of time to flush all Fitbit data before we sign on-chain.
-    - cron: '45 * * * *'
+    - cron: '45 */3 * * *'
   workflow_dispatch: # manual trigger for testing
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
         
       - name: Run oracle notarizer
         run: node oracle.js
-        timeout-minutes: 10
+        timeout-minutes: 30
         env:
           ORACLE_PRIVATE_KEY: ${{ secrets.ORACLE_PRIVATE_KEY }}
           MODULE_ADDRESS: ${{ secrets.MODULE_ADDRESS }}
