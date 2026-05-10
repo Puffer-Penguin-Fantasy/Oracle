@@ -22,12 +22,20 @@ app.get('/sync', (req, res) => {
     
     console.log('✅ Fitbit Sync complete. Starting Blockchain Notarization...');
     
-    exec(`node oracle.js`, { timeout: 600000 }, (oErr, oStdout, oStderr) => {
-      if (oErr) console.error(`❌ oracle.js error: ${oErr.message}`);
-      if (oStdout) console.log(`[oracle.js] ${oStdout}`);
-      if (oStderr) console.error(`[oracle.js] ${oStderr}`);
-      console.log('🏁 Full Oracle cycle (Sync + Notarization) done.');
-    });
+      exec(`node oracle.js`, { timeout: 600000 }, (oErr, oStdout, oStderr) => {
+        if (oErr) console.error(`❌ oracle.js error: ${oErr.message}`);
+        if (oStdout) console.log(`[oracle.js] ${oStdout}`);
+        if (oStderr) console.error(`[oracle.js] ${oStderr}`);
+        
+        console.log('✅ Notarization complete. Updating Global Leaderboard...');
+        
+        exec(`node update-leaderboard.js`, { timeout: 300000 }, (lErr, lStdout, lStderr) => {
+          if (lErr) console.error(`❌ update-leaderboard.js error: ${lErr.message}`);
+          if (lStdout) console.log(`[update-leaderboard.js] ${lStdout}`);
+          if (lStderr) console.error(`[update-leaderboard.js] ${lStderr}`);
+          console.log('🏁 Full Oracle cycle (Sync + Notarization + Leaderboard) done.');
+        });
+      });
   });
 });
 
