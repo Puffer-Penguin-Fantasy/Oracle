@@ -68,7 +68,7 @@ console.log(`📡 Connected to Firestore Project: ${serviceAccount.project_id}`)
 // ─── Movement Client Init ─────────────────────────────────────────────────────
 const aptosConfig = new AptosConfig({
   network: Network.CUSTOM,
-  fullnode: process.env.MOVEMENT_NODE_URL || "https://testnet.movementnetwork.xyz/v1",
+  fullnode: process.env.MOVEMENT_NODE_URL || "https://mainnet.movementnetwork.xyz/v1",
 });
 const aptos = new Aptos(aptosConfig);
 const MODULE_ADDRESS = process.env.MODULE_ADDRESS;
