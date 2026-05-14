@@ -130,6 +130,25 @@ async function runOracle() {
 
     console.log(`\n🎮 Processing Game: ${gameData.name || gameId}`);
 
+    // --- NEW: Verify On-Chain Participants ---
+    let onChainParticipants = [];
+    try {
+      const resource = await aptos.getAccountResource({
+        accountAddress: MODULE_ADDRESS,
+        resourceType: `${MODULE_ADDRESS}::game::GameStore`
+      });
+      const onChainGame = resource.games[parseInt(gameId)];
+      if (onChainGame) {
+        onChainParticipants = (onChainGame.participants || []).map(addr => addr.toLowerCase());
+      }
+    } catch (err) {
+      console.error(`    ⚠️ Failed to fetch on-chain participants for game ${gameId}:`, err.message);
+      // If we can't verify, we might want to skip or proceed with caution. 
+      // Proceeding with Firestore only might lead back to the borrow error.
+      continue; 
+    }
+    // -----------------------------------------
+
     // We process each game day one by one.
     // Increasing Grace Period to 7 hours (25200s).
     // This gives players until 7 AM the next day to sync their steps before notarization.
@@ -152,15 +171,17 @@ async function runOracle() {
       
       for (const participantDoc of participantsSnap.docs) {
         const p = participantDoc.data();
+        const pAddr = p.walletAddress?.toLowerCase();
         const days = p.days || {};
         const daysOnChain = p.daysOnChain || {};
 
         const steps = days[dayKey];
         const alreadyNotarized = !!daysOnChain[chainKey];
+        const isJoinedOnChain = onChainParticipants.includes(pAddr);
 
-        console.log(`      👤 ${p.walletAddress?.slice(0,10)}... | ${dayKey}: ${steps ?? 'MISSING'} | onChain: ${alreadyNotarized}`);
+        console.log(`      👤 ${pAddr?.slice(0,10)}... | ${dayKey}: ${steps ?? 'MISSING'} | onChain: ${alreadyNotarized} | joinedOnChain: ${isJoinedOnChain}`);
 
-        if (alreadyNotarized) continue;
+        if (alreadyNotarized || !isJoinedOnChain) continue;
 
         if (steps !== undefined && steps !== null) {
           batchAddrs.push(p.walletAddress);

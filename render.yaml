@@ -18,4 +18,4 @@ services:
       - key: MODULE_ADDRESS
         sync: false
       - key: MOVEMENT_NODE_URL
-        value: "https://testnet.movementnetwork.xyz/v1"
+        value: "https://mainnet.movementnetwork.xyz/v1"
