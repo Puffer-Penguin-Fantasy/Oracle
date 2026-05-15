@@ -7,35 +7,45 @@ const port = process.env.PORT || 3000;
 // Optional: protect with a secret
 const SYNC_SECRET = process.env.SYNC_SECRET || null;
 
+// ENDPOINT 1: Sync Fitbit data (Run every 2 mins)
 app.get('/sync', (req, res) => {
   if (SYNC_SECRET && req.query.secret !== SYNC_SECRET) {
     return res.status(401).send('Unauthorized');
   }
 
-  console.log(`\n🔔 Sync triggered: ${new Date().toISOString()}`);
-  res.send('Sync started in parallel.');
+  console.log(`\n🔔 Fitbit Sync triggered: ${new Date().toISOString()}`);
+  res.send('Fitbit sync started.');
 
   exec(`node sync-steps.js`, { timeout: 600000 }, (err, stdout, stderr) => {
     if (err) console.error(`❌ sync-steps.js error: ${err.message}`);
     if (stdout) console.log(`[sync-steps.js] ${stdout}`);
     if (stderr) console.error(`[sync-steps.js] ${stderr}`);
+    console.log('🏁 Fitbit Sync complete.');
+  });
+});
+
+// ENDPOINT 2: Blockchain Notarization (Run every 3 hours)
+app.get('/notarize', (req, res) => {
+  if (SYNC_SECRET && req.query.secret !== SYNC_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  console.log(`\n🚀 Blockchain Notarization triggered: ${new Date().toISOString()}`);
+  res.send('Notarization started.');
+
+  exec(`node oracle.js`, { timeout: 600000 }, (oErr, oStdout, oStderr) => {
+    if (oErr) console.error(`❌ oracle.js error: ${oErr.message}`);
+    if (oStdout) console.log(`[oracle.js] ${oStdout}`);
+    if (oStderr) console.error(`[oracle.js] ${oStderr}`);
     
-    console.log('✅ Fitbit Sync complete. Starting Blockchain Notarization...');
+    console.log('✅ Notarization complete. Updating Global Leaderboard...');
     
-      exec(`node oracle.js`, { timeout: 600000 }, (oErr, oStdout, oStderr) => {
-        if (oErr) console.error(`❌ oracle.js error: ${oErr.message}`);
-        if (oStdout) console.log(`[oracle.js] ${oStdout}`);
-        if (oStderr) console.error(`[oracle.js] ${oStderr}`);
-        
-        console.log('✅ Notarization complete. Updating Global Leaderboard...');
-        
-        exec(`node update-leaderboard.js`, { timeout: 300000 }, (lErr, lStdout, lStderr) => {
-          if (lErr) console.error(`❌ update-leaderboard.js error: ${lErr.message}`);
-          if (lStdout) console.log(`[update-leaderboard.js] ${lStdout}`);
-          if (lStderr) console.error(`[update-leaderboard.js] ${lStderr}`);
-          console.log('🏁 Full Oracle cycle (Sync + Notarization + Leaderboard) done.');
-        });
-      });
+    exec(`node update-leaderboard.js`, { timeout: 300000 }, (lErr, lStdout, lStderr) => {
+      if (lErr) console.error(`❌ update-leaderboard.js error: ${lErr.message}`);
+      if (lStdout) console.log(`[update-leaderboard.js] ${lStdout}`);
+      if (lStderr) console.error(`[update-leaderboard.js] ${lStderr}`);
+      console.log('🏁 Full Notarization cycle done.');
+    });
   });
 });
 
