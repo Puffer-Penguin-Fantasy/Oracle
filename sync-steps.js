@@ -1,7 +1,7 @@
 /**
- * Puffer Walks Background Synchronizer — Parallelized
- * -------------------------------------------------
- * Fetches steps concurrently with limited concurrency to avoid 429s.
+ * Puffer Walks Background Synchronizer — Optimized & User-Centric
+ * --------------------------------------------------------------
+ * Fetches steps for each unique user once per cycle and applies to all games.
  */
 require("dotenv").config();
 const axios = require("axios");
@@ -95,43 +95,9 @@ async function runWithConcurrency(tasks, limit = 10) {
   return results;
 }
 
-// ─── Individual Participant Sync ──────────────────────────────────────────────
-async function syncParticipant({ wallet, tokenData, participantRef, dateObj, game }) {
-  try {
-    const accessToken = await getValidToken(wallet, tokenData);
-
-    const fitbitRes = await axios.get(
-      `https://api.fitbit.com/1/user/-/activities/tracker/steps/date/${dateObj.str}/1d.json`,
-      { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 8000 }
-    );
-    const trackerSteps = fitbitRes.data?.['activities-tracker-steps'];
-    if (!trackerSteps || trackerSteps.length === 0) return;
-    const steps = parseInt(trackerSteps[0].value, 10);
-    if (isNaN(steps)) return;
-
-    const gameStartTime = new Date(game.startTime * 1000);
-    gameStartTime.setUTCHours(0, 0, 0, 0);
-    const targetDate = new Date(dateObj.str);
-    targetDate.setUTCHours(0, 0, 0, 0);
-
-    const dayIdx = Math.floor((targetDate - gameStartTime) / 86400000);
-    if (dayIdx >= 0 && dayIdx < (game.numDays || 7)) {
-      const dayKey = `day${dayIdx + 1}`;
-      await participantRef.update({
-        [`days.${dayKey}`]: steps,
-        lastUpdated: new Date().toISOString(),
-      });
-      console.log(`  ✅ ${wallet.slice(0, 8)}… ${dateObj.label}: ${steps} steps → ${dayKey}`);
-    }
-  } catch (err) {
-    const status = err.response?.status;
-    console.error(`  ❌ ${wallet.slice(0, 8)}… [${status || 'ERR'}]: ${err.response?.data?.errors?.[0]?.message || err.message}`);
-  }
-}
-
 // ─── Main Sync Loop ───────────────────────────────────────────────────────────
 async function runSync() {
-  console.log(`\n☁️ Puffer Parallel Sync Running: ${new Date().toISOString()}`);
+  console.log(`\n☁️ Puffer Optimized Sync Running: ${new Date().toISOString()}`);
   
   const now = new Date();
   const yesterday = new Date(now);
@@ -142,7 +108,7 @@ async function runSync() {
     { str: now.toISOString().split("T")[0], label: "today" }
   ];
   
-  // 1. Pre-fetch all connected tokens to avoid N+1 queries
+  // 1. Pre-fetch all connected tokens
   console.log("📂 Pre-fetching connected Fitbit tokens...");
   const tokensSnap = await db.collection("fitbit_tokens")
     .where("connected", "==", true)
@@ -154,8 +120,10 @@ async function runSync() {
   });
   console.log(`✅ Loaded ${tokenMap.size} connected tokens.`);
 
+  // 2. Build User -> Games Map
+  console.log("🎮 Mapping users to active games...");
+  const userToGames = new Map(); // Map<wallet, Array<{game, participantRef}>>
   const gamesSnap = await db.collection("games").get();
-  const tasks = [];
 
   for (const gameDoc of gamesSnap.docs) {
     const game = gameDoc.data();
@@ -166,32 +134,66 @@ async function runSync() {
     // Skip games that ended more than 48 hours ago
     if (now.getTime() / 1000 > (endTimeSecs + 172800)) continue;
 
-    console.log(`🎮 Checking Game: ${game.name || gameDoc.id}`);
     const participantsSnap = await gameDoc.ref.collection("participants").get();
-    
     for (const participantDoc of participantsSnap.docs) {
       const p = participantDoc.data();
       const wallet = p.walletAddress?.toLowerCase();
-      if (!wallet) continue;
+      if (!wallet || !tokenMap.has(wallet)) continue;
 
-      // Use the pre-fetched map
-      const tokenData = tokenMap.get(wallet);
-      if (!tokenData) continue;
-
-      for (const dateObj of datesToSync) {
-        tasks.push(() => syncParticipant({
-          wallet,
-          tokenData,
-          participantRef: participantDoc.ref,
-          dateObj,
-          game
-        }));
-      }
+      if (!userToGames.has(wallet)) userToGames.set(wallet, []);
+      userToGames.get(wallet).push({ game, ref: participantDoc.ref });
     }
   }
+  console.log(`✅ Found ${userToGames.size} unique users to sync across all active games.`);
 
-  console.log(`📋 Total fetch tasks: ${tasks.length} (running 30 at a time)`);
-  await runWithConcurrency(tasks, 30);
+  // 3. Create Fetch Tasks (One per unique user)
+  const tasks = [];
+  for (const [wallet, games] of userToGames.entries()) {
+    tasks.push(async () => {
+      try {
+        const tokenData = tokenMap.get(wallet);
+        const accessToken = await getValidToken(wallet, tokenData);
+
+        for (const dateObj of datesToSync) {
+          // One Fitbit request per date
+          const fitbitRes = await axios.get(
+            `https://api.fitbit.com/1/user/-/activities/tracker/steps/date/${dateObj.str}/1d.json`,
+            { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 8000 }
+          );
+
+          const trackerSteps = fitbitRes.data?.['activities-tracker-steps'];
+          if (!trackerSteps || trackerSteps.length === 0) continue;
+          const steps = parseInt(trackerSteps[0].value, 10);
+          if (isNaN(steps)) continue;
+
+          // Apply to all games this user is in
+          for (const item of games) {
+            const gameStartTime = new Date(item.game.startTime * 1000);
+            gameStartTime.setUTCHours(0, 0, 0, 0);
+            const targetDate = new Date(dateObj.str);
+            targetDate.setUTCHours(0, 0, 0, 0);
+
+            const dayIdx = Math.floor((targetDate - gameStartTime) / 86400000);
+            if (dayIdx >= 0 && dayIdx < (item.game.numDays || 7)) {
+              const dayKey = `day${dayIdx + 1}`;
+              await item.ref.update({
+                [`days.${dayKey}`]: steps,
+                lastUpdated: new Date().toISOString(),
+              });
+            }
+          }
+          console.log(`  ✅ ${wallet.slice(0, 8)}… ${dateObj.label}: ${steps} steps (Applied to ${games.length} games)`);
+        }
+      } catch (err) {
+        const status = err.response?.status;
+        const msg = err.response?.data?.errors?.[0]?.message || err.message;
+        console.error(`  ❌ ${wallet.slice(0, 8)}… [${status || 'ERR'}]: ${msg}`);
+      }
+    });
+  }
+
+  console.log(`📋 Total unique user fetch tasks: ${tasks.length} (running 10 at a time)`);
+  await runWithConcurrency(tasks, 10);
 }
 
 runSync().then(() => {
