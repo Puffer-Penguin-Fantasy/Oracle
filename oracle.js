@@ -97,13 +97,86 @@ async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
 
     const result = await aptos.waitForTransaction({ transactionHash: committed.hash });
     if (!result.success) {
+      // Record failure in Firestore to trigger cooldown
+      await db.collection("games").doc(gameId).set({
+        lastNotarizationFailure: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      await sendEmailNotification(
+        "🚨 Oracle Transaction FAILED",
+        `Game: ${gameId}\nDay: ${dayIdx}\nError: ${result.vm_status}\nHash: ${committed.hash}`,
+        `<h2>🚨 Notarization Failed</h2><p><b>Game:</b> ${gameId}</p><p><b>Day:</b> ${dayIdx}</p><p><b>Error:</b> ${result.vm_status}</p><p><b>Hash:</b> <a href="https://explorer.movementnetwork.xyz/txn/${committed.hash}">${committed.hash}</a></p>`
+      );
       throw new Error(`Transaction failed: ${result.vm_status}`);
     }
+
     console.log(`  ✅ Batch Success! Hash: ${committed.hash}`);
+    await sendEmailNotification(
+      "✅ Oracle Batch SUCCESS",
+      `Game: ${gameId}\nDay: ${dayIdx}\nUsers: ${userAddrs.length}\nHash: ${committed.hash}`,
+      `<h2>✅ Notarization Successful</h2><p><b>Game:</b> ${gameId}</p><p><b>Day:</b> ${dayIdx}</p><p><b>Users:</b> ${userAddrs.length}</p><p><b>Hash:</b> <a href="https://explorer.movementnetwork.xyz/txn/${committed.hash}">${committed.hash}</a></p>`
+    );
     return true;
   } catch (err) {
     console.error(`  ❌ Batch Failure for Game ${gameId} Day ${dayIdx}:`, err.message);
     return false;
+  }
+}
+
+const nodemailer = require("nodemailer");
+
+// --- NEW: Email Notification Logic ---
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: parseInt(process.env.EMAIL_PORT || "587"),
+  secure: process.env.EMAIL_SECURE === "true", // true for 465, false for other ports
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+async function sendEmailNotification(subject, text, html) {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !process.env.EMAIL_TO) {
+    console.log("    ℹ️ Email notifications skipped (missing credentials in .env)");
+    return;
+  }
+  try {
+    await transporter.sendMail({
+      from: `"Puffer Oracle" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_TO,
+      subject: subject,
+      text: text,
+      html: html,
+    });
+    console.log("    📧 Email notification sent.");
+  } catch (err) {
+    console.error("    ❌ Failed to send email:", err.message);
+  }
+}
+
+// --- NEW: Self-Healing Logic ---
+async function syncMissingParticipantToFirestore(gameId, walletAddress, numDays) {
+  try {
+    const participantRef = db.collection("games").doc(gameId).collection("participants").doc(walletAddress.toLowerCase());
+    const docSnap = await participantRef.get();
+    
+    if (!docSnap.exists) {
+      console.log(`    ✅ Auto-syncing missing participant ${walletAddress} to Firestore...`);
+      const initialDays = {};
+      for (let i = 1; i <= numDays; i++) {
+        initialDays[`day${i}`] = 0;
+      }
+      
+      await participantRef.set({
+        walletAddress: walletAddress.toLowerCase(),
+        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+        days: initialDays,
+        autoSynced: true // Mark as synced by Oracle
+      }, { merge: true });
+    }
+  } catch (err) {
+    console.error(`    ❌ Failed to auto-sync participant ${walletAddress}:`, err.message);
   }
 }
 
@@ -149,6 +222,15 @@ async function runOracle() {
     }
     // -----------------------------------------
 
+    // --- NEW: Anti-Spam Cooldown ---
+    // If this game failed recently, skip it for 1 hour to prevent spamming
+    const lastFailure = gameData.lastNotarizationFailure?.toDate?.() || new Date(0);
+    const minutesSinceFailure = (Date.now() - lastFailure.getTime()) / (1000 * 60);
+    if (minutesSinceFailure < 60) {
+      console.log(`    ⏳ Skipping game ${gameId} (Failed ${Math.floor(minutesSinceFailure)}m ago, cooling down...)`);
+      continue;
+    }
+
     // We process each game day one by one.
     // Increasing Grace Period to 7 hours (25200s).
     // This gives players until 7 AM the next day to sync their steps before notarization.
@@ -168,6 +250,12 @@ async function runOracle() {
 
       const participantsSnap = await gameDoc.ref.collection("participants").get();
       console.log(`    (Found ${participantsSnap.size} participants in Firestore collection)`);
+      
+      // --- NEW: Self-Healing / Auto-Index ---
+      // For each on-chain participant, ensure they exist in Firestore
+      for (const onChainAddr of onChainParticipants) {
+        await syncMissingParticipantToFirestore(gameId, onChainAddr, numDays);
+      }
       
       for (const participantDoc of participantsSnap.docs) {
         const p = participantDoc.data();
