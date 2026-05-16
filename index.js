@@ -63,7 +63,7 @@ setInterval(() => {
   axios.get(`${APP_URL}/keep-alive`)
     .then(() => console.log('💓 Keep-alive ping successful'))
     .catch(err => console.error('💔 Keep-alive ping failed:', err.message));
-}, 14 * 60 * 1000);
+}, 30 * 60 * 1000);
 
 app.listen(port, async () => {
   console.log(`🚀 Oracle Web Server listening at http://localhost:${port}`);
