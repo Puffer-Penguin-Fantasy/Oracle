@@ -77,8 +77,8 @@ app.listen(port, async () => {
     const resend = new Resend(RESEND_API_KEY);
 
     try {
-      await resend.emails.send({
-        from: 'Puffer Oracle <oracle@arcticpenguin.xyz>',
+      const { data, error } = await resend.emails.send({
+        from: 'Puffer Oracle <onboarding@resend.dev>',
         to: EMAIL_TO,
         subject: "🚀 Puffer Oracle: Deployment Successful",
         text: `Your Oracle is now online and monitoring the Movement Network.\n\nServer URL: ${APP_URL}\nTime: ${new Date().toISOString()}`,
@@ -88,7 +88,12 @@ app.listen(port, async () => {
                <p><b>Status:</b> ✅ Connected & Notarizing</p>
                <p><small>This is a one-time confirmation sent upon system startup via Resend.</small></p>`,
       });
-      console.log("📧 Deployment confirmation email sent (via Resend).");
+      
+      if (error) {
+        console.error("❌ Resend API Error:", error.message);
+      } else {
+        console.log("📧 Deployment confirmation email sent (via Resend).");
+      }
     } catch (err) {
       console.error("❌ Failed to send deployment email:", err.message);
     }

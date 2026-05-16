@@ -139,14 +139,19 @@ async function sendEmailNotification(subject, text, html) {
   const resend = new Resend(RESEND_API_KEY);
 
   try {
-    await resend.emails.send({
-      from: 'Puffer Oracle <oracle@arcticpenguin.xyz>',
+    const { data, error } = await resend.emails.send({
+      from: 'Puffer Oracle <onboarding@resend.dev>',
       to: EMAIL_TO,
       subject: subject,
       text: text,
       html: html,
     });
-    console.log("    📧 Email notification sent (via Resend).");
+    
+    if (error) {
+      console.error("    ❌ Resend API Error:", error.message);
+    } else {
+      console.log("    📧 Email notification sent (via Resend).");
+    }
   } catch (err) {
     console.error("    ❌ Failed to send email:", err.message);
   }

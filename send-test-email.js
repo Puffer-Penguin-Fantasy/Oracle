@@ -19,7 +19,7 @@ async function sendTestEmail() {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Puffer Test <oracle@arcticpenguin.xyz>',
+      from: 'Puffer Test <onboarding@resend.dev>',
       to: EMAIL_TO,
       subject: "🧪 Puffer Oracle: Resend Test Notification",
       text: "This is a test email via Resend. If you received this, your configuration is now perfect!",
