@@ -78,6 +78,7 @@ app.listen(port, async () => {
       host: 'smtp.gmail.com',
       port: 465,
       secure: true, // Use SSL
+      family: 4,    // Force IPv4
       auth: { user: EMAIL_USER, pass: EMAIL_PASS },
     });
 
