@@ -123,45 +123,30 @@ async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
   }
 }
 
-const nodemailer = require("nodemailer");
-
-// --- NEW: Email Notification Logic ---
-// --- NEW: Email Notification Logic ---
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // Use SSL
-  family: 4,    // Force IPv4
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-
-
+const { Resend } = require('resend');
 
 async function sendEmailNotification(subject, text, html) {
-  const { EMAIL_USER, EMAIL_PASS, EMAIL_TO } = process.env;
+  const { RESEND_API_KEY, EMAIL_TO } = process.env;
   
-  if (!EMAIL_USER || !EMAIL_PASS || !EMAIL_TO) {
+  if (!RESEND_API_KEY || !EMAIL_TO) {
     let missing = [];
-    if (!EMAIL_USER) missing.push("EMAIL_USER");
-    if (!EMAIL_PASS) missing.push("EMAIL_PASS");
+    if (!RESEND_API_KEY) missing.push("RESEND_API_KEY");
     if (!EMAIL_TO) missing.push("EMAIL_TO");
     console.log(`    ℹ️ Email notifications skipped (missing: ${missing.join(", ")})`);
     return;
   }
 
+  const resend = new Resend(RESEND_API_KEY);
+
   try {
-    await transporter.sendMail({
-      from: `"Puffer Oracle" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_TO,
+    await resend.emails.send({
+      from: 'Puffer Oracle <oracle@arcticpenguin.xyz>',
+      to: EMAIL_TO,
       subject: subject,
       text: text,
       html: html,
     });
-    console.log("    📧 Email notification sent.");
+    console.log("    📧 Email notification sent (via Resend).");
   } catch (err) {
     console.error("    ❌ Failed to send email:", err.message);
   }

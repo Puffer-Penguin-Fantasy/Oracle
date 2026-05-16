@@ -1,7 +1,7 @@
 const express = require('express');
 const { exec } = require('child_process');
 const axios = require('axios');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
@@ -72,19 +72,13 @@ app.listen(port, async () => {
   console.log(`📡 Keep-alive active for: ${APP_URL}`);
 
   // --- Send Deployment Confirmation Email ---
-  const { EMAIL_USER, EMAIL_PASS, EMAIL_TO } = process.env;
-  if (EMAIL_USER && EMAIL_PASS && EMAIL_TO) {
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true, // Use SSL
-      family: 4,    // Force IPv4
-      auth: { user: EMAIL_USER, pass: EMAIL_PASS },
-    });
+  const { RESEND_API_KEY, EMAIL_TO } = process.env;
+  if (RESEND_API_KEY && EMAIL_TO) {
+    const resend = new Resend(RESEND_API_KEY);
 
     try {
-      await transporter.sendMail({
-        from: `"Puffer System" <${EMAIL_USER}>`,
+      await resend.emails.send({
+        from: 'Puffer Oracle <oracle@arcticpenguin.xyz>',
         to: EMAIL_TO,
         subject: "🚀 Puffer Oracle: Deployment Successful",
         text: `Your Oracle is now online and monitoring the Movement Network.\n\nServer URL: ${APP_URL}\nTime: ${new Date().toISOString()}`,
@@ -92,13 +86,13 @@ app.listen(port, async () => {
                <p>Your Oracle is now <b>Online</b> and monitoring the Movement Network.</p>
                <p><b>Server URL:</b> <a href="${APP_URL}">${APP_URL}</a></p>
                <p><b>Status:</b> ✅ Connected & Notarizing</p>
-               <p><small>This is a one-time confirmation sent upon system startup.</small></p>`,
+               <p><small>This is a one-time confirmation sent upon system startup via Resend.</small></p>`,
       });
-      console.log("📧 Deployment confirmation email sent.");
+      console.log("📧 Deployment confirmation email sent (via Resend).");
     } catch (err) {
       console.error("❌ Failed to send deployment email:", err.message);
     }
   } else {
-    console.log("ℹ️ Deployment email skipped (missing credentials).");
+    console.log("ℹ️ Deployment email skipped (missing RESEND_API_KEY or EMAIL_TO).");
   }
 });
