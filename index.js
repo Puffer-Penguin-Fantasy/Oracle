@@ -75,7 +75,9 @@ app.listen(port, async () => {
   const { EMAIL_USER, EMAIL_PASS, EMAIL_TO } = process.env;
   if (EMAIL_USER && EMAIL_PASS && EMAIL_TO) {
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true, // Use SSL
       auth: { user: EMAIL_USER, pass: EMAIL_PASS },
     });
 
