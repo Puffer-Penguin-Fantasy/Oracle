@@ -2,20 +2,29 @@ require("dotenv").config();
 const nodemailer = require("nodemailer");
 
 async function sendTestEmail() {
+  const { EMAIL_USER, EMAIL_PASS, EMAIL_TO } = process.env;
+
+  if (!EMAIL_USER || !EMAIL_PASS || !EMAIL_TO) {
+    let missing = [];
+    if (!EMAIL_USER) missing.push("EMAIL_USER");
+    if (!EMAIL_PASS) missing.push("EMAIL_PASS");
+    if (!EMAIL_TO) missing.push("EMAIL_TO");
+    console.error(`❌ Test failed: Missing environment variables (${missing.join(", ")})`);
+    return;
+  }
+
   console.log("📨 Attempting to send test email...");
-  console.log(`   Host: ${process.env.EMAIL_HOST}`);
-  console.log(`   User: ${process.env.EMAIL_USER}`);
-  console.log(`   To:   ${process.env.EMAIL_TO}`);
+  console.log(`   User: ${EMAIL_USER}`);
+  console.log(`   To:   ${EMAIL_TO}`);
 
   const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT || "587"),
-    secure: process.env.EMAIL_SECURE === "true",
+    service: 'gmail',
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
     },
   });
+
 
   try {
     const info = await transporter.sendMail({

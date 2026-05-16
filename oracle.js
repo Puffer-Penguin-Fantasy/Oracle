@@ -126,21 +126,28 @@ async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
 const nodemailer = require("nodemailer");
 
 // --- NEW: Email Notification Logic ---
+// --- NEW: Email Notification Logic ---
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: process.env.EMAIL_SECURE === "true", // true for 465, false for other ports
+  service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
 });
 
+
 async function sendEmailNotification(subject, text, html) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !process.env.EMAIL_TO) {
-    console.log("    ℹ️ Email notifications skipped (missing credentials in .env)");
+  const { EMAIL_USER, EMAIL_PASS, EMAIL_TO } = process.env;
+  
+  if (!EMAIL_USER || !EMAIL_PASS || !EMAIL_TO) {
+    let missing = [];
+    if (!EMAIL_USER) missing.push("EMAIL_USER");
+    if (!EMAIL_PASS) missing.push("EMAIL_PASS");
+    if (!EMAIL_TO) missing.push("EMAIL_TO");
+    console.log(`    ℹ️ Email notifications skipped (missing: ${missing.join(", ")})`);
     return;
   }
+
   try {
     await transporter.sendMail({
       from: `"Puffer Oracle" <${process.env.EMAIL_USER}>`,
