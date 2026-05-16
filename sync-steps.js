@@ -19,7 +19,8 @@ try {
   serviceAccount = JSON.parse(cleanedSecret);
 } catch (err) {
   console.error("❌ Firebase Secret Error in Sync Oracle:", err.message);
-  process.exit(1);
+  if (require.main === module) process.exit(1);
+  // If running as module, we don't exit; the error will be handled by the caller
 }
 
 if (!admin.apps.length) {
@@ -196,10 +197,17 @@ async function runSync() {
   await runWithConcurrency(tasks, 10);
 }
 
-runSync().then(() => {
-  console.log("\n✅ Sync cycle complete.");
-  process.exit(0);
-}).catch(err => {
-  console.error("Fatal sync error:", err);
-  process.exit(1);
-});
+// Only run automatically if executed directly via 'node sync-steps.js'
+if (require.main === module) {
+  runSync()
+    .then(() => {
+      console.log("\n✅ Sync cycle complete.");
+      process.exit(0);
+    })
+    .catch(err => {
+      console.error("Fatal sync error:", err);
+      process.exit(1);
+    });
+}
+
+module.exports = { runSync };

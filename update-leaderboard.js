@@ -21,7 +21,7 @@ try {
   serviceAccount = JSON.parse(cleanedSecret);
 } catch (err) {
   console.error("❌ Firebase Secret Error:", err.message);
-  process.exit(1);
+  if (require.main === module) process.exit(1);
 }
 
 if (!admin.apps.length) {
@@ -132,9 +132,14 @@ async function updateGlobalLeaderboard() {
   console.log(`\n✅ De-duplicated Leaderboard Update Complete! Total users updated: ${totalUpdated}`);
 }
 
-updateGlobalLeaderboard().then(() => {
-  process.exit(0);
-}).catch(err => {
-  console.error("Fatal update error:", err);
-  process.exit(1);
-});
+// Only run automatically if executed directly via 'node update-leaderboard.js'
+if (require.main === module) {
+  updateGlobalLeaderboard().then(() => {
+    process.exit(0);
+  }).catch(err => {
+    console.error("Fatal update error:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = { updateGlobalLeaderboard };

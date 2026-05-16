@@ -39,7 +39,7 @@ try {
   serviceAccount = JSON.parse(cleanedSecret);
 } catch (err) {
   console.error("❌ Firebase Secret Error:", err.message);
-  process.exit(1);
+  if (require.main === module) process.exit(1);
 }
 
 if (!admin.apps.length) {
@@ -65,23 +65,21 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 console.log(`📡 Connected to Firestore Project: ${serviceAccount.project_id}`);
 
-// ─── Movement Client Init ─────────────────────────────────────────────────────
-const aptosConfig = new AptosConfig({
-  network: Network.CUSTOM,
-  fullnode: process.env.MOVEMENT_NODE_URL || "https://mainnet.movementnetwork.xyz/v1",
-});
-const aptos = new Aptos(aptosConfig);
-const MODULE_ADDRESS = process.env.MODULE_ADDRESS;
-
-const oraclePrivateKey = new Ed25519PrivateKey(process.env.ORACLE_PRIVATE_KEY);
-const oracleAccount = Account.fromPrivateKey({ privateKey: oraclePrivateKey });
-
-console.log(`🔑 Oracle Address: ${oracleAccount.accountAddress.toString()}`);
+// Movement/Aptos initialization moved inside runOracle for safety
 
 // ─── Helper: Batch On-Chain Submission ──────────────────────────────────────────
 async function finalizeBatchOnChain(userAddrs, gameId, dayIdx, stepsList) {
   if (userAddrs.length === 0) return true;
   try {
+    const aptosConfig = new AptosConfig({
+      network: Network.CUSTOM,
+      fullnode: process.env.MOVEMENT_NODE_URL || "https://mainnet.movementnetwork.xyz/v1",
+    });
+    const aptos = new Aptos(aptosConfig);
+    const MODULE_ADDRESS = process.env.MODULE_ADDRESS;
+    const oraclePrivateKey = new Ed25519PrivateKey(process.env.ORACLE_PRIVATE_KEY);
+    const oracleAccount = Account.fromPrivateKey({ privateKey: oraclePrivateKey });
+
     const tx = await aptos.transaction.build.simple({
       sender: oracleAccount.accountAddress,
       data: {
@@ -184,6 +182,18 @@ async function syncMissingParticipantToFirestore(gameId, walletAddress, numDays)
 
 // ─── Main Oracle Loop ─────────────────────────────────────────────────────────
 async function runOracle() {
+  // --- Movement Client Init (Moved inside for safety) ---
+  const aptosConfig = new AptosConfig({
+    network: Network.CUSTOM,
+    fullnode: process.env.MOVEMENT_NODE_URL || "https://mainnet.movementnetwork.xyz/v1",
+  });
+  const aptos = new Aptos(aptosConfig);
+  const MODULE_ADDRESS = process.env.MODULE_ADDRESS;
+  const oraclePrivateKey = new Ed25519PrivateKey(process.env.ORACLE_PRIVATE_KEY);
+  const oracleAccount = Account.fromPrivateKey({ privateKey: oraclePrivateKey });
+
+  console.log(`🔑 Oracle Address: ${oracleAccount.accountAddress.toString()}`);
+  
   const nowSeconds = Math.floor(Date.now() / 1000);
   console.log(`\n🕐 Puffer Notarizer Running: ${new Date().toISOString()}`);
 
@@ -308,7 +318,12 @@ async function runOracle() {
   console.log("\n✅ Notarization cycle complete.");
 }
 
-runOracle().catch(err => {
-  console.error("Fatal oracle error:", err);
-  process.exit(1);
-});
+// Only run automatically if executed directly via 'node oracle.js'
+if (require.main === module) {
+  runOracle().catch(err => {
+    console.error("Fatal oracle error:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = { runOracle };
